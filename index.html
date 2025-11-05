@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VTI Cube Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+
+        #app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #viewer {
+            flex: 1;
+            position: relative;
+        }
+
+        #controls {
+            width: 320px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-group h3 {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .value-display {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #info {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        #info div {
+            margin-bottom: 5px;
+        }
+
+        .color-preset {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            margin: 5px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .color-preset:hover {
+            transform: scale(1.1);
+            border-color: #667eea;
+        }
+
+        .color-preset.active {
+            border-color: #667eea;
+            border-width: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="viewer">
+            <div id="loading">
+                <div class="spinner"></div>
+                <div>Loading VTI file...</div>
+            </div>
+        </div>
+        <div id="controls">
+            <h1>🔬 VTI Viewer</h1>
+            
+            <div id="info">
+                <div><strong>Dataset Info:</strong></div>
+                <div id="dimensions">Dimensions: Loading...</div>
+                <div id="dataRange">Data Range: Loading...</div>
+            </div>
+
+            <div class="control-group">
+                <h3>📁 File Upload</h3>
+                <input type="file" id="fileInput" accept=".vti" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+            </div>
+
+            <div class="control-group">
+                <h3>📊 Data Array</h3>
+                <select id="dataArraySelect"></select>
+            </div>
+
+            <div class="control-group">
+                <h3>🎨 Visualization Mode</h3>
+                <select id="renderMode">
+                    <option value="volume">Volume Rendering</option>
+                    <option value="slice">Slice View</option>
+                    <option value="contour">Isosurface</option>
+                </select>
+            </div>
+
+            <div class="control-group" id="opacityControl">
+                <h3>👁️ Opacity</h3>
+                <label>Overall Opacity</label>
+                <input type="range" id="opacitySlider" min="0" max="1" step="0.01" value="0.5">
+                <div class="value-display">Value: <span id="opacityValue">0.5</span></div>
+            </div>
+
+            <div class="control-group" id="sliceControl" style="display: none;">
+                <h3>🔪 Slice Position</h3>
+                <label>Z Slice</label>
+                <input type="range" id="sliceSlider" min="0" max="20" step="1" value="10">
+                <div class="value-display">Slice: <span id="sliceValue">10</span></div>
+            </div>
+
+            <div class="control-group" id="contourControl" style="display: none;">
+                <h3>📈 Isosurface Value</h3>
+                <input type="range" id="contourSlider" min="0" max="100" step="1" value="50">
+                <div class="value-display">Value: <span id="contourValue">50</span></div>
+            </div>
+
+            <div class="control-group">
+                <h3>🎨 Color Presets</h3>
+                <div id="colorPresets"></div>
+            </div>
+
+            <div class="control-group">
+                <h3>🎬 Controls</h3>
+                <button id="resetCamera">Reset Camera</button>
+                <button id="toggleAnimation">Start Rotation</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vtk.js@29.8.0"></script>
+    <script>
+        // Access vtk.js modules correctly
+        const vtkFullScreenRenderWindow = vtk.Rendering.Misc.vtkFullScreenRenderWindow;
+        const vtkXMLImageDataReader = vtk.IO.XML.vtkXMLImageDataReader;
+        const vtkVolume = vtk.Rendering.Core.vtkVolume;
+        const vtkVolumeMapper = vtk.Rendering.Core.vtkVolumeMapper;
+        const vtkColorTransferFunction = vtk.Rendering.Core.vtkColorTransferFunction;
+        const vtkPiecewiseFunction = vtk.Common.DataModel.vtkPiecewiseFunction;
+        const vtkImageSlice = vtk.Rendering.Core.vtkImageSlice;
+        const vtkImageMapper = vtk.Rendering.Core.vtkImageMapper;
+        const vtkImageMarchingCubes = vtk.Filters.General.vtkImageMarchingCubes;
+        const vtkMapper = vtk.Rendering.Core.vtkMapper;
+        const vtkActor = vtk.Rendering.Core.vtkActor;
+        const vtkImageReslice = vtk.Imaging.Core.vtkImageReslice;
+        const vtkPlaneSource = vtk.Filters.Sources.vtkPlaneSource;
+        const vtkTexture = vtk.Rendering.Core.vtkTexture;
+
+        // Initialize renderer
+        const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
+            container: document.getElementById('viewer')
+        });
+        const renderer = fullScreenRenderer.getRenderer();
+        const renderWindow = fullScreenRenderer.getRenderWindow();
+        
+        renderer.setBackground(0.1, 0.1, 0.2);
+
+        // Global variables
+        let reader = null;
+        let currentActor = null;
+        let animationId = null;
+        let isAnimating = false;
+
+        // Color presets
+        const colorPresets = [
+            { name: 'Cool to Warm', preset: 'Cool to Warm' },
+            { name: 'Rainbow', preset: 'erdc_rainbow_bright' },
+            { name: 'Viridis', preset: 'Viridis (matplotlib)' },
+            { name: 'Plasma', preset: 'Plasma (matplotlib)' },
+            { name: 'X Ray', preset: 'X Ray' },
+            { name: 'Black-Body', preset: 'Black-Body Radiation' }
+        ];
+
+        // Create color preset buttons
+        const presetsContainer = document.getElementById('colorPresets');
+        colorPresets.forEach((preset, index) => {
+            const btn = document.createElement('div');
+            btn.className = 'color-preset' + (index === 0 ? ' active' : '');
+            btn.title = preset.name;
+            btn.style.background = getPresetGradient(preset.preset);
+            btn.onclick = () => {
+                document.querySelectorAll('.color-preset').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                applyColorPreset(preset.preset);
+            };
+            presetsContainer.appendChild(btn);
+        });
+
+        function getPresetGradient(presetName) {
+            // Simple gradients for preview
+            const gradients = {
+                'Cool to Warm': 'linear-gradient(90deg, #3b4cc0, #7396f5, #f49b7f, #dd4c4c)',
+                'erdc_rainbow_bright': 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff)',
+                'Viridis (matplotlib)': 'linear-gradient(90deg, #440154, #31688e, #35b779, #fde724)',
+                'Plasma (matplotlib)': 'linear-gradient(90deg, #0d0887, #7e03a8, #cc4778, #f89540, #f0f921)',
+                'X Ray': 'linear-gradient(90deg, #000000, #ffffff)',
+                'Black-Body Radiation': 'linear-gradient(90deg, #000000, #ff0000, #ffff00, #ffffff)'
+            };
+            return gradients[presetName] || 'linear-gradient(90deg, #000, #fff)';
+        }
+
+        // Load default VTI file
+        async function loadDefaultFile() {
+            try {
+                const response = await fetch('/mnt/user-data/uploads/dummy-cube.vti');
+                const arrayBuffer = await response.arrayBuffer();
+                loadVTIData(arrayBuffer);
+            } catch (error) {
+                console.error('Error loading default file:', error);
+                document.getElementById('loading').innerHTML = 
+                    '<div style="color: #d32f2f;">Error loading file. Please upload a VTI file.</div>';
+            }
+        }
+
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    loadVTIData(e.target.result);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function loadVTIData(arrayBuffer) {
+            // Create reader
+            reader = vtkXMLImageDataReader.newInstance();
+            reader.parseAsArrayBuffer(arrayBuffer);
+
+            // Update info
+            const imageData = reader.getOutputData();
+            const dims = imageData.getDimensions();
+            document.getElementById('dimensions').textContent = 
+                `Dimensions: ${dims[0]} × ${dims[1]} × ${dims[2]}`;
+
+            // Populate data array selector
+            const arrays = imageData.getPointData().getArrays();
+            const selector = document.getElementById('dataArraySelect');
+            selector.innerHTML = '';
+            arrays.forEach((array, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                option.textContent = array.getName();
+                selector.appendChild(option);
+            });
+
+            // Set active scalar
+            if (arrays.length > 0) {
+                imageData.getPointData().setActiveScalars(arrays[0].getName());
+            }
+
+            // Update data range display
+            updateDataRange();
+
+            // Initial render
+            updateVisualization();
+
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function updateDataRange() {
+            const imageData = reader.getOutputData();
+            const scalars = imageData.getPointData().getScalars();
+            if (scalars) {
+                const range = scalars.getRange();
+                document.getElementById('dataRange').textContent = 
+                    `Data Range: ${range[0].toFixed(2)} to ${range[1].toFixed(2)}`;
+                
+                // Update contour slider range
+                document.getElementById('contourSlider').min = range[0];
+                document.getElementById('contourSlider').max = range[1];
+                document.getElementById('contourSlider').value = (range[0] + range[1]) / 2;
+                document.getElementById('contourValue').textContent = 
+                    ((range[0] + range[1]) / 2).toFixed(2);
+            }
+        }
+
+        function updateVisualization() {
+            // Remove previous actor
+            if (currentActor) {
+                renderer.removeVolume(currentActor);
+                renderer.removeActor(currentActor);
+            }
+
+            const mode = document.getElementById('renderMode').value;
+            const imageData = reader.getOutputData();
+
+            if (mode === 'volume') {
+                renderVolume(imageData);
+                document.getElementById('opacityControl').style.display = 'block';
+                document.getElementById('sliceControl').style.display = 'none';
+                document.getElementById('contourControl').style.display = 'none';
+            } else if (mode === 'slice') {
+                renderSlice(imageData);
+                document.getElementById('opacityControl').style.display = 'none';
+                document.getElementById('sliceControl').style.display = 'block';
+                document.getElementById('contourControl').style.display = 'none';
+            } else if (mode === 'contour') {
+                renderContour(imageData);
+                document.getElementById('opacityControl').style.display = 'none';
+                document.getElementById('sliceControl').style.display = 'none';
+                document.getElementById('contourControl').style.display = 'block';
+            }
+
+            renderer.resetCamera();
+            renderWindow.render();
+        }
+
+        function renderVolume(imageData) {
+            const actor = vtkVolume.newInstance();
+            const mapper = vtkVolumeMapper.newInstance();
+            mapper.setInputData(imageData);
+
+            const scalars = imageData.getPointData().getScalars();
+            const dataRange = scalars.getRange();
+
+            // Color transfer function
+            const ctfun = vtkColorTransferFunction.newInstance();
+            applyColorPresetToFunction(ctfun, 'Cool to Warm', dataRange);
+
+            // Opacity transfer function
+            const ofun = vtkPiecewiseFunction.newInstance();
+            const opacity = parseFloat(document.getElementById('opacitySlider').value);
+            ofun.addPoint(dataRange[0], 0.0);
+            ofun.addPoint((dataRange[0] + dataRange[1]) * 0.5, opacity);
+            ofun.addPoint(dataRange[1], opacity * 1.5);
+
+            actor.getProperty().setRGBTransferFunction(0, ctfun);
+            actor.getProperty().setScalarOpacity(0, ofun);
+            actor.getProperty().setInterpolationTypeToLinear();
+
+            mapper.setSampleDistance(0.7);
+            actor.setMapper(mapper);
+
+            renderer.addVolume(actor);
+            currentActor = actor;
+        }
+
+        function renderSlice(imageData) {
+            const dims = imageData.getDimensions();
+            const sliceNum = parseInt(document.getElementById('sliceSlider').value);
+            document.getElementById('sliceSlider').max = dims[2] - 1;
+            
+            const spacing = imageData.getSpacing();
+            const origin = imageData.getOrigin();
+            
+            // Calculate Z position for the slice
+            const zPos = origin[2] + sliceNum * spacing[2];
+            
+            // Create reslice filter
+            const reslice = vtkImageReslice.newInstance();
+            reslice.setInputData(imageData);
+            reslice.setOutputDimensionality(2);
+            
+            // Create reslice axes matrix (4x4 identity with Z translation)
+            const resliceAxes = new Float64Array([
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, zPos,
+                0, 0, 0, 1
+            ]);
+            
+            reslice.setResliceAxes(resliceAxes);
+            reslice.update();
+            
+            // Get the output slice
+            const sliceData = reslice.getOutputData();
+            
+            // Create mapper for 2D image
+            const mapper = vtkImageMapper.newInstance();
+            mapper.setInputData(sliceData);
+            mapper.setSlicingMode(vtk.Rendering.Core.vtkImageMapper.SlicingMode.Z);
+            mapper.setSlice(0);
+            
+            // Create actor
+            const actor = vtkImageSlice.newInstance();
+            actor.setMapper(mapper);
+            
+            renderer.addActor(actor);
+            currentActor = actor;
+        }
+
+        function renderContour(imageData) {
+            const marchingCubes = vtkImageMarchingCubes.newInstance({
+                contourValue: parseFloat(document.getElementById('contourSlider').value),
+                mergePoints: true
+            });
+            marchingCubes.setInputData(imageData);
+
+            const mapper = vtkMapper.newInstance();
+            mapper.setInputConnection(marchingCubes.getOutputPort());
+
+            const actor = vtkActor.newInstance();
+            actor.setMapper(mapper);
+            actor.getProperty().setColor(0.4, 0.7, 1.0);
+
+            renderer.addActor(actor);
+            currentActor = actor;
+        }
+
+        function applyColorPresetToFunction(ctfun, presetName, dataRange) {
+            ctfun.removeAllPoints();
+            
+            // Define color presets manually
+            const presets = {
+                'Cool to Warm': [
+                    [0.0, 0.23, 0.30, 0.75],
+                    [0.5, 0.87, 0.87, 0.87],
+                    [1.0, 0.71, 0.02, 0.15]
+                ],
+                'erdc_rainbow_bright': [
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.2, 1.0, 1.0, 0.0],
+                    [0.4, 0.0, 1.0, 0.0],
+                    [0.6, 0.0, 1.0, 1.0],
+                    [0.8, 0.0, 0.0, 1.0],
+                    [1.0, 1.0, 0.0, 1.0]
+                ],
+                'Viridis (matplotlib)': [
+                    [0.0, 0.27, 0.00, 0.33],
+                    [0.25, 0.19, 0.41, 0.56],
+                    [0.5, 0.13, 0.57, 0.55],
+                    [0.75, 0.21, 0.72, 0.47],
+                    [1.0, 0.99, 0.91, 0.14]
+                ],
+                'Plasma (matplotlib)': [
+                    [0.0, 0.05, 0.03, 0.53],
+                    [0.25, 0.49, 0.01, 0.66],
+                    [0.5, 0.80, 0.28, 0.47],
+                    [0.75, 0.97, 0.58, 0.25],
+                    [1.0, 0.94, 0.98, 0.13]
+                ],
+                'X Ray': [
+                    [0.0, 0.0, 0.0, 0.0],
+                    [1.0, 1.0, 1.0, 1.0]
+                ],
+                'Black-Body Radiation': [
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.4, 1.0, 0.0, 0.0],
+                    [0.7, 1.0, 1.0, 0.0],
+                    [1.0, 1.0, 1.0, 1.0]
+                ]
+            };
+            
+            const colors = presets[presetName] || presets['Cool to Warm'];
+            
+            for (let i = 0; i < colors.length; i++) {
+                const [t, r, g, b] = colors[i];
+                const val = dataRange[0] + (dataRange[1] - dataRange[0]) * t;
+                ctfun.addRGBPoint(val, r, g, b);
+            }
+        }
+
+        function applyColorPreset(presetName) {
+            if (!currentActor || !reader) return;
+            
+            const mode = document.getElementById('renderMode').value;
+            if (mode === 'volume') {
+                const imageData = reader.getOutputData();
+                const scalars = imageData.getPointData().getScalars();
+                const dataRange = scalars.getRange();
+                
+                const ctfun = currentActor.getProperty().getRGBTransferFunction(0);
+                applyColorPresetToFunction(ctfun, presetName, dataRange);
+                renderWindow.render();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('renderMode').addEventListener('change', updateVisualization);
+
+        document.getElementById('dataArraySelect').addEventListener('change', (e) => {
+            const imageData = reader.getOutputData();
+            const arrays = imageData.getPointData().getArrays();
+            const selectedArray = arrays[e.target.value];
+            imageData.getPointData().setActiveScalars(selectedArray.getName());
+            updateDataRange();
+            updateVisualization();
+        });
+
+        document.getElementById('opacitySlider').addEventListener('input', (e) => {
+            document.getElementById('opacityValue').textContent = e.target.value;
+            updateVisualization();
+        });
+
+        document.getElementById('sliceSlider').addEventListener('input', (e) => {
+            document.getElementById('sliceValue').textContent = e.target.value;
+            // Re-render with new slice position
+            updateVisualization();
+        });
+
+        document.getElementById('contourSlider').addEventListener('input', (e) => {
+            document.getElementById('contourValue').textContent = parseFloat(e.target.value).toFixed(2);
+            updateVisualization();
+        });
+
+        document.getElementById('resetCamera').addEventListener('click', () => {
+            renderer.resetCamera();
+            renderWindow.render();
+        });
+
+        document.getElementById('toggleAnimation').addEventListener('click', (e) => {
+            isAnimating = !isAnimating;
+            e.target.textContent = isAnimating ? 'Stop Rotation' : 'Start Rotation';
+            
+            if (isAnimating) {
+                animate();
+            } else {
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                }
+            }
+        });
+
+        function animate() {
+            if (!isAnimating) return;
+            
+            const camera = renderer.getActiveCamera();
+            camera.azimuth(1);
+            renderWindow.render();
+            
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Load default file on start
+        loadDefaultFile();
+    </script>
+</body>
+</html>
